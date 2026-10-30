@@ -1,0 +1,12 @@
+build/
+dsp_test/test_dsp
+dsp_test/test_dsp_asan
+dsp_test/results/*.csv
+cli_test/test_cli
+app_test/cli_sim
+firmware_test/test_recorder
+firmware_test/audio_sim/new64
+firmware_test/audio_sim/new128
+firmware_test/audio_sim/old64
+__pycache__/
+dsp_test/test_howl128

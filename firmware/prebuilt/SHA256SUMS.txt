@@ -1,0 +1,8 @@
+OpenEar 0.3.1 prebuilt firmware, built 2026-10-28 with GCC 10.3.1 and ADI MSDK fbcdf63 (FTHR_Apps_P1). Start address 0x10000000.
+
+bcb69c627c15748b9d7a99458b43c765d95f1c77029cd0087eca3a2f1210c819  openear-audio-only-block128.bin
+378604b7a3b8c833a1565fbecfd38d7523d09f206968cd3f801541ce74462bc4  openear-audio-only-micleft.bin
+7554650ca105d4b68c0ab1103ae0b2091172e259378dc50c4b3a9c3707a00b4e  openear-audio-only.bin
+1c99037f4baf93e459105ceb7fdc66baaeafd076585bf160cbb0217d58c42c72  openear-full-block128.bin
+4a71f3cea278e92b4b480063854b2e02abb81d08a1b902acb76b3262466bbf8e  openear-full.bin
+b5667d35dbcd66fada9705930ea08cb6a70b8ca9f4e7e387fed8bd28637bc06e  diagnostics/adi-i2s-example-fthr.bin

@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenEar Fitting</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Familjen+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one phone-width column; status strip, then four working views
+   (hearing test, tune, live, console) behind a segmented switch. The
+   audiogram, drawn the clinical way (dB HL increasing downward, O = right
+   ear in red, X = left ear in blue), is the page's centre of gravity. */
+:root {
+  --paper: #f6f7f9;
+  --card: #ffffff;
+  --ink: #15202b;
+  --ink-2: #4f5b68;
+  --line: #d9dee5;
+  --accent: #1f6f8b;          /* instrument teal: controls, focus */
+  --accent-ink: #ffffff;
+  --right: #c8322b;           /* audiogram convention: right ear red */
+  --left: #2456b8;            /* audiogram convention: left ear blue */
+  --good: #1d7a46;
+  --warn: #a8620a;
+  --bad: #b3261e;
+  --zone: rgba(31, 111, 139, 0.08);
+  --font-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f151b; --card: #17202a; --ink: #e8edf2; --ink-2: #a4b0bd; --line: #2b3744;
+    --accent: #5fb6d1; --accent-ink: #0b1a21; --right: #f07068; --left: #79a3f2;
+    --good: #5fcf8c; --warn: #f0b04a; --bad: #f2867d; --zone: rgba(95, 182, 209, 0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f151b; --card: #17202a; --ink: #e8edf2; --ink-2: #a4b0bd; --line: #2b3744;
+  --accent: #5fb6d1; --accent-ink: #0b1a21; --right: #f07068; --left: #79a3f2;
+  --good: #5fcf8c; --warn: #f0b04a; --bad: #f2867d; --zone: rgba(95, 182, 209, 0.10);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--font-body);
+  font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 40px;
+}
+.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.6rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.15rem; }
+p { margin: 0; }
+.muted { color: var(--ink-2); }
+.small { font-size: 0.875rem; }
+.data { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.label { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-2); flex: none; }
+.dot.on { background: var(--good); }
+.dot.demo { background: var(--warn); }
+
+button, .btn {
+  font: inherit; font-weight: 700; border-radius: 10px; border: 1.5px solid var(--accent);
+  padding: 10px 16px; background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  min-height: 44px;
+}
+button.ghost { background: transparent; color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* the hidden attribute must beat classes that set display (panels, rows) */
+[hidden] { display: none !important; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.row > * { min-width: 0; }
+
+nav.views { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+nav.views button { background: transparent; color: var(--ink-2); border: none; border-radius: 9px; padding: 8px 4px; font-size: 0.9rem; }
+nav.views button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.note { border-left: 3px solid var(--warn); padding: 8px 12px; background: var(--zone); border-radius: 0 8px 8px 0; font-size: 0.9rem; }
+
+/* audiogram */
+.audiogram { width: 100%; height: auto; display: block; }
+.audiogram .grid { stroke: var(--line); stroke-width: 1; }
+.audiogram .axis-t { fill: var(--ink-2); font-family: var(--font-data); font-size: 11px; }
+.audiogram .zone { fill: var(--zone); }
+.audiogram .zone-t { fill: var(--ink-2); font-family: var(--font-body); font-size: 10px; }
+.audiogram .trace { fill: none; stroke-width: 2; }
+.ear-right { stroke: var(--right); color: var(--right); }
+.ear-left { stroke: var(--left); color: var(--left); }
+.audiogram .mark { fill: none; stroke-width: 2.2; }
+.audiogram .mark-floor { stroke-dasharray: 2 2; }
+
+.test-stage { display: grid; gap: 12px; text-align: center; padding: 8px 0; }
+.big-freq { font-family: var(--font-display); font-size: 2.4rem; line-height: 1; }
+.answer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.answer button { min-height: 64px; font-size: 1.05rem; }
+.progress { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.progress span { height: 6px; border-radius: 3px; background: var(--line); }
+.progress span.done { background: var(--accent); }
+.progress span.now { background: var(--warn); }
+
+table.fit { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.fit th, table.fit td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+table.fit th:first-child, table.fit td:first-child { text-align: left; }
+.table-scroll { overflow-x: auto; }
+
+/* tune */
+.slider { display: grid; grid-template-columns: 5.5rem 1fr 3.6rem; gap: 10px; align-items: center; }
+.slider input[type=range] { width: 100%; accent-color: var(--accent); min-height: 32px; }
+.slider .v { text-align: right; }
+select { font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); min-height: 44px; }
+.toggle { display: flex; align-items: center; gap: 10px; }
+.toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
+
+/* live */
+.meters { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: end; }
+.meter { display: grid; gap: 4px; justify-items: center; }
+.meter .track { width: 100%; height: 140px; background: var(--zone); border-radius: 6px; position: relative; overflow: hidden; }
+.meter .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); border-radius: 6px 6px 0 0; transition: height 0.2s linear; }
+.meter .gain { position: absolute; left: 0; right: 0; height: 2px; background: var(--right); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stat { display: grid; gap: 2px; }
+.stat .val { font-family: var(--font-data); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; border: 1px solid currentColor; }
+.chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+
+/* console */
+.log { font-family: var(--font-data); font-size: 0.8rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px; height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.log .tx { color: var(--accent); }
+.cmd { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.cmd input { font: inherit; font-family: var(--font-data); padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); min-width: 0; }
+
+@media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>OpenEar Fitting</h1>
+      <p class="muted small">Hearing test and tuning for the OpenEar device</p>
+    </div>
+    <div class="row">
+      <div class="status"><span class="dot demo" id="dot"></span><span id="status-text">Demo device</span></div>
+      <button id="connect">Connect</button>
+    </div>
+  </header>
+
+  <p class="note" id="banner">You're looking at a simulated device, so every screen works before the board arrives. Press Connect to pair with a real OpenEar (Chrome on Android, Windows or Mac).</p>
+
+  <nav class="views" role="tablist" aria-label="Views">
+    <button role="tab" id="tab-test" aria-selected="true" data-view="test">Hearing test</button>
+    <button role="tab" id="tab-tune" aria-selected="false" data-view="tune">Tune</button>
+    <button role="tab" id="tab-live" aria-selected="false" data-view="live">Live</button>
+    <button role="tab" id="tab-console" aria-selected="false" data-view="console">Console</button>
+  </nav>
+
+  <!-- HEARING TEST -->
+  <section id="view-test" class="panel" aria-labelledby="tab-test">
+    <div class="row" style="justify-content: space-between;">
+      <h2>Audiogram</h2>
+      <span class="chip warn" id="ag-tag">Example result</span>
+    </div>
+    <svg class="audiogram" id="audiogram" viewBox="0 0 360 300" role="img" aria-label="Audiogram"></svg>
+
+    <div id="test-intro" class="row" style="gap: 10px;">
+      <label class="small" for="ear">Ear under test</label>
+      <select id="ear"><option value="right">Right (O)</option><option value="left">Left (X)</option></select>
+      <button id="start-test">Start hearing test</button>
+    </div>
+    <p class="muted small" id="test-help">Sit somewhere quiet with the earphone in. OpenEar plays short beeps at six pitches. Tap "Heard it" whenever you hear one, even faintly. It takes about five minutes.</p>
+
+    <div id="test-stage" class="test-stage" hidden>
+      <div class="progress" id="progress"></div>
+      <p class="label">Now testing</p>
+      <p class="big-freq data" id="test-freq">1000 Hz</p>
+      <p class="muted" id="test-prompt">Listen…</p>
+      <div class="answer">
+        <button id="heard" class="ghost">Heard it</button>
+        <button id="not-heard" class="ghost">Didn't hear</button>
+      </div>
+      <button id="stop-test" class="ghost">Stop test</button>
+    </div>
+
+    <div id="fit-box" class="panel" style="padding: 12px;">
+      <h2>Suggested fitting</h2>
+      <div class="table-scroll">
+        <table class="fit data" id="fit-table"></table>
+      </div>
+      <p class="muted small" id="fit-note"></p>
+      <div class="row">
+        <button id="apply-fit">Send to OpenEar and save</button>
+        <button id="calibrate" class="ghost">Use this result as the normal-hearing reference</button>
+      </div>
+      <p class="muted small">Half-gain rule: about half of each hearing loss is added back, with gentle compression. This is a starting point for experiments, not a clinical prescription.</p>
+    </div>
+  </section>
+
+  <!-- TUNE -->
+  <section id="view-tune" class="panel" aria-labelledby="tab-tune" hidden>
+    <div class="row" style="justify-content: space-between;">
+      <h2>Band gains</h2>
+      <label class="toggle small"><input type="checkbox" id="bypass"> Bypass (flat, for A/B)</label>
+    </div>
+    <div id="sliders" style="display: grid; gap: 6px;"></div>
+    <div class="slider">
+      <label for="vol" class="small">Volume</label>
+      <input type="range" id="vol" min="-30" max="12" step="1" value="0">
+      <span class="v data" id="vol-v">0 dB</span>
+    </div>
+    <div class="row">
+      <label for="comp" class="small">Compression</label>
+      <select id="comp">
+        <option value="1">Off (1:1)</option>
+        <option value="1.5">Gentle (1.5:1)</option>
+        <option value="2" selected>Medium (2:1)</option>
+        <option value="3">Strong (3:1)</option>
+      </select>
+      <label class="toggle small"><input type="checkbox" id="nr" checked> Quiet-noise reduction</label>
+    </div>
+    <div class="row">
+      <button id="save">Save on OpenEar</button>
+      <button id="reload" class="ghost">Read settings from device</button>
+    </div>
+    <p class="muted small">Changes play live. Band gain stops at +30 dB and the output ceiling at −3 dBFS inside the firmware, whatever this page sends.</p>
+  </section>
+
+  <!-- LIVE -->
+  <section id="view-live" class="panel" aria-labelledby="tab-live" hidden>
+    <h2>Live levels</h2>
+    <div class="meters" id="meters"></div>
+    <p class="muted small">Bar: sound reaching each band (−90 to 0 dBFS). Red line: gain OpenEar is applying right now (−10 to +30 dB).</p>
+    <div class="stats">
+      <div class="stat"><span class="label">DSP load</span><span class="val" id="s-cpu">–</span></div>
+      <div class="stat"><span class="label">Limiter</span><span class="val" id="s-gr">–</span></div>
+      <div class="stat"><span class="label">Howl guard</span><span class="val" id="s-howl">–</span></div>
+      <div class="stat"><span class="label">Battery</span><span class="val" id="s-batt">–</span></div>
+    </div>
+    <div class="row">
+      <button id="rec">Record 10 s to SD card</button>
+      <span class="muted small" id="rec-status"></span>
+    </div>
+  </section>
+
+  <!-- CONSOLE -->
+  <section id="view-console" class="panel" aria-labelledby="tab-console" hidden>
+    <h2>Console</h2>
+    <div class="log" id="log" aria-live="polite"></div>
+    <form class="cmd" id="cmd-form">
+      <input id="cmd" placeholder="type a command, e.g. stat" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="submit">Send</button>
+    </form>
+    <p class="muted small">Same commands as the USB serial console. Try <span class="data">help</span>, <span class="data">stat</span>, <span class="data">show</span>.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const SVC = "e0262760-08c2-11e1-9073-0e8ac72e1001";
+  const CHR = "e0262760-08c2-11e1-9073-0e8ac72e0001";
+  const FREQS = [250, 500, 1000, 2000, 4000, 8000];
+  const TEST_ORDER = [1000, 2000, 4000, 8000, 500, 250];   // clinical order
+  const BANDS = ["< 250 Hz", "250–500", "500–1k", "1k–2k", "2k–4k", "> 4k"];
+  const TONE_MAX = -20;   // firmware cap (dBFS)
+  // During the hearing test the device plays a silent tone between beeps,
+  // which keeps its microphone muted: amplified room noise would mask quiet
+  // beeps. Needs firmware 0.3.0+, which glides tone level changes (older
+  // firmware would click on every level jump), so with an older device the
+  // app falls back to 'tone off' between beeps.
+  const SILENT = -100;
+  let devVersion = "";
+  const verAtLeast = (v, want) => {
+    const a = String(v).split(".").map(Number), b = want.split(".").map(Number);
+    for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i]; }
+    return true;
+  };
+  const holdOK = () => verAtLeast(devVersion, "0.3.0");
+  const quiet = (hz) => send(holdOK() ? `tone ${hz} ${SILENT}` : "tone off");
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* transport: real BLE device or a simulated one                      */
+  /* ------------------------------------------------------------------ */
+  let link = null;           // {send(line)}
+  let mode = "demo";
+  let rxBuf = "";
+  let pollBusy = false, pollSince = 0;
+  const listeners = new Set();
+
+  function onLine(line) {
+    logLine(line, false);
+    listeners.forEach((fn) => fn(line));
+    if (line.startsWith("STATE ")) applyState(parseKV(line));
+    if (line.startsWith("LV ")) { pollBusy = false; applyLevels(parseKV(line)); }
+    if (line.startsWith("BATT ")) { const kv = parseKV(line); $("s-batt").textContent = `${kv.pct}% · ${(kv.mv / 1000).toFixed(2)} V`; }
+    if (/^recording|^\[rec\]|rec stopped/.test(line)) $("rec-status").textContent = line;
+  }
+  function feed(text) {
+    rxBuf += text;
+    let i;
+    while ((i = rxBuf.indexOf("\n")) >= 0) {
+      const line = rxBuf.slice(0, i).replace(/\r$/, "");
+      rxBuf = rxBuf.slice(i + 1);
+      if (line.trim()) onLine(line.trim());
+    }
+  }
+
+  // one write at a time: BLE writes must not overlap
+  let queue = Promise.resolve();
+  function send(cmd) {
+    logLine(cmd, true);
+    queue = queue.then(() => link.send(cmd)).catch((e) => logLine("! " + e.message, false));
+    return queue;
+  }
+
+  class DemoDevice {
+    constructor() {
+      this.s = { g: [0, 0, 0, 0, 0, 0], cr: [1, 1, 1, 1, 1, 1], knee: Array(6).fill(-45), et: Array(6).fill(-70), er: Array(6).fill(1), vol: 0, lim: -6, byp: 0, tone: 0, hp: 16 };
+      // a simulated listener with a sloping high-frequency loss (dBFS thresholds)
+      this.thr = { 250: -78, 500: -76, 1000: -70, 2000: -60, 4000: -50, 8000: -46 };
+      this.tone = null; this.rec = 0;
+    }
+    reply(t) { setTimeout(() => feed(t + "\n"), 40 + Math.random() * 60); }
+    state() {
+      const s = this.s, f = (a, d) => a.map((x) => x.toFixed(d)).join(",");
+      return `STATE v=0.3.0 g=${f(s.g, 1)} cr=${f(s.cr, 2)} knee=${f(s.knee, 0)} et=${f(s.et, 0)} er=${f(s.er, 1)} vol=${s.vol.toFixed(1)} lim=${s.lim.toFixed(1)} byp=${s.byp} tone=${s.tone} hp=${s.hp}`;
+    }
+    heard(hz, db) { const t = this.thr[hz] ?? -70; return db > t + (Math.random() * 4 - 2); }
+    async send(line) {
+      const a = line.trim().split(/\s+/), c = a[0], s = this.s;
+      const band = (x, fn) => { if (x === "all") s.g.forEach((_, k) => fn(k)); else fn(+x); };
+      switch (c) {
+        case "state": this.reply(this.state()); break;
+        case "levels": {
+          const lv = s.g.map((_, k) => (-62 + k * 1.5 + Math.sin(Date.now() / 700 + k) * 8 + Math.random() * 4));
+          const ga = s.byp ? s.g.map(() => 0) : s.g.map((g, k) => g - Math.max(0, lv[k] - s.knee[k]) * (1 - 1 / s.cr[k]));
+          this.reply(`LV lv=${lv.map((x) => x.toFixed(1)).join(",")} ga=${ga.map((x) => x.toFixed(1)).join(",")} gr=0.0 howl=0 cpu=${(24 + Math.random() * 3).toFixed(1)}`);
+          break;
+        }
+        case "batt": this.reply("BATT mv=3912 pct=76.5"); break;
+        case "g": band(a[1], (k) => { s.g[k] = Math.max(-30, Math.min(30, +a[2])); }); this.reply("OK"); break;
+        case "cr": band(a[1], (k) => { s.cr[k] = +a[2]; }); this.reply("OK"); break;
+        case "exp": band(a[1], (k) => { s.et[k] = +a[2]; s.er[k] = +a[3]; }); this.reply("OK"); break;
+        case "vol": s.vol = +a[1]; this.reply("OK"); break;
+        case "bypass": s.byp = a[1] === undefined ? 1 - s.byp : +a[1]; this.reply(s.byp ? "BYPASS (flat)" : "OPENEAR ON"); this.reply("OK"); break;
+        case "tone": if (a[1] === "off") { s.tone = 0; } else { s.tone = 1; this.tone = [+a[1], Math.min(TONE_MAX, +a[2])]; } this.reply("OK"); break;
+        case "fit": {
+          const hl = a.slice(1).map(Number);
+          for (let k = 0; k < 6; k++) {
+            const h = k === 0 ? hl[0] : (hl[k - 1] + hl[k]) / 2;
+            s.g[k] = Math.min(30, Math.max(0, h / 2)); s.cr[k] = Math.min(3, 1 + h / 60); s.er[k] = 2;
+          }
+          this.reply("fitted (half-gain rule). 'show' to inspect, 'save' to keep."); this.reply("OK"); break;
+        }
+        case "save": this.reply("saving (audio mutes for a moment)... ok"); break;
+        case "rec": this.reply("recording 10 s to OE000.WAV (L = mic, R = OpenEar output)"); setTimeout(() => feed("[rec] saved OE000.WAV: 10.0 s, 0 overruns\n"), 10000); break;
+        case "help": this.reply("Demo device: the real OpenEar prints its full command list here."); break;
+        case "stat": this.reply("DSP CPU now 24.8%  peak 31.2%  late blocks 0  (demo)"); break;
+        default: this.reply(`? unknown command '${c}' - type help`);
+      }
+    }
+  }
+
+  class BleDevice {
+    async open() {
+      if (!navigator.bluetooth) throw new Error("This browser has no Web Bluetooth. Use Chrome on Android, Windows or Mac, and open this page as its own file or website.");
+      this.dev = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: "OpenEar" }, { services: [SVC] }], optionalServices: [SVC] });
+      this.dev.addEventListener("gattserverdisconnected", () => { setMode("demo", "Disconnected – back to the demo device"); });
+      const gatt = await this.dev.gatt.connect();
+      const svc = await gatt.getPrimaryService(SVC);
+      this.chr = await svc.getCharacteristic(CHR);
+      await this.chr.startNotifications();
+      const dec = new TextDecoder();
+      this.chr.addEventListener("characteristicvaluechanged", (e) => feed(dec.decode(e.target.value)));
+    }
+    async send(line) {
+      const bytes = new TextEncoder().encode(line + "\n");
+      if (this.chr.writeValueWithResponse) await this.chr.writeValueWithResponse(bytes);
+      else await this.chr.writeValue(bytes);
+    }
+  }
+
+  function setMode(m, text) {
+    mode = m;
+    $("dot").className = "dot " + (m === "ble" ? "on" : "demo");
+    $("status-text").textContent = text;
+    $("banner").hidden = m === "ble";
+    $("connect").textContent = m === "ble" ? "Connected" : "Connect";
+    $("connect").disabled = m === "ble";
+    if (m === "demo") link = new DemoDevice();
+    send("state");
+  }
+
+  $("connect").addEventListener("click", async () => {
+    const dev = new BleDevice();
+    $("status-text").textContent = "Searching…";
+    try {
+      await dev.open();
+      link = dev;
+      mode = "ble";
+      setMode("ble", "Connected to OpenEar");
+      send("batt");
+    } catch (e) {
+      $("status-text").textContent = mode === "ble" ? "Connected to OpenEar" : "Demo device";
+      $("banner").hidden = false;
+      $("banner").textContent = e.name === "NotFoundError" ? "No device chosen. Check OpenEar is powered and advertising, then try again." :
+        e.name === "SecurityError" ? "Bluetooth isn't allowed inside this preview. Open openear-app.html from the project folder (or your GitHub Pages site) in Chrome to pair." : e.message;
+    }
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* parsing                                                            */
+  /* ------------------------------------------------------------------ */
+  function parseKV(line) {
+    const out = {};
+    line.split(/\s+/).slice(1).forEach((t) => {
+      const i = t.indexOf("=");
+      if (i < 0) return;
+      const k = t.slice(0, i), v = t.slice(i + 1);
+      out[k] = v.includes(",") ? v.split(",").map(Number) : (isNaN(+v) ? v : +v);
+    });
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* views                                                              */
+  /* ------------------------------------------------------------------ */
+  let pollTimer = null;
+  // Ask for the next levels only after the last answer arrived (or 1.5 s passed),
+  // so a slow Bluetooth link can't build up a queue of requests.
+  function pollLevels() {
+    if (pollBusy && Date.now() - pollSince < 1500) return;
+    pollBusy = true;
+    pollSince = Date.now();
+    send("levels");
+  }
+  function showView(v) {
+    document.querySelectorAll("nav.views button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === v)));
+    ["test", "tune", "live", "console"].forEach((n) => { $("view-" + n).hidden = n !== v; });
+    clearInterval(pollTimer);
+    if (v === "live") {
+      send("batt");
+      pollBusy = false;
+      pollTimer = setInterval(pollLevels, 400);
+    }
+    if (v === "tune") send("state");
+  }
+  document.querySelectorAll("nav.views button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+
+  /* ---------------- console ---------------- */
+  function logLine(text, out) {
+    const log = $("log");
+    if (!out && /^(LV|OK)$|^LV /.test(text)) return;     // keep the log readable while polling
+    if (out && text === "levels") return;
+    const div = document.createElement("div");
+    if (out) div.className = "tx";
+    div.textContent = (out ? "› " : "") + text;
+    log.appendChild(div);
+    while (log.childNodes.length > 400) log.removeChild(log.firstChild);
+    log.scrollTop = log.scrollHeight;
+  }
+  $("cmd-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("cmd").value.trim();
+    if (v) send(v);
+    $("cmd").value = "";
+  });
+
+  /* ---------------- tune ---------------- */
+  const sliders = [];
+  BANDS.forEach((name, k) => {
+    const row = document.createElement("div");
+    row.className = "slider";
+    row.innerHTML = `<label class="small" for="g${k}">${name}</label><input type="range" id="g${k}" min="-10" max="30" step="1" value="0"><span class="v data" id="g${k}-v">0 dB</span>`;
+    $("sliders").appendChild(row);
+    const input = row.querySelector("input");
+    let t;
+    input.addEventListener("input", () => {
+      $(`g${k}-v`).textContent = `${input.value} dB`;
+      clearTimeout(t);
+      t = setTimeout(() => send(`g ${k} ${input.value}`), 120);
+    });
+    sliders.push(input);
+  });
+  let volT;
+  $("vol").addEventListener("input", () => {
+    $("vol-v").textContent = `${$("vol").value} dB`;
+    clearTimeout(volT);
+    volT = setTimeout(() => send(`vol ${$("vol").value}`), 120);
+  });
+  $("bypass").addEventListener("change", () => send(`bypass ${$("bypass").checked ? 1 : 0}`));
+  $("comp").addEventListener("change", () => send(`cr all ${$("comp").value}`));
+  $("nr").addEventListener("change", () => send($("nr").checked ? "exp all -70 2" : "exp all -70 1"));
+  $("save").addEventListener("click", () => send("save"));
+  $("reload").addEventListener("click", () => send("state"));
+
+  function applyState(s) {
+    if (s.v !== undefined) devVersion = String(s.v);
+    if (Array.isArray(s.g)) s.g.forEach((g, k) => { sliders[k].value = Math.round(g); $(`g${k}-v`).textContent = `${Math.round(g)} dB`; });
+    if (typeof s.vol === "number") { $("vol").value = s.vol; $("vol-v").textContent = `${s.vol} dB`; }
+    if (typeof s.byp === "number") $("bypass").checked = !!s.byp;
+    if (Array.isArray(s.er)) $("nr").checked = s.er.some((r) => r > 1);
+    if (Array.isArray(s.cr)) {
+      const avg = s.cr.reduce((a, b) => a + b, 0) / s.cr.length;
+      $("comp").value = avg < 1.25 ? "1" : avg < 1.75 ? "1.5" : avg < 2.5 ? "2" : "3";
+    }
+  }
+
+  /* ---------------- live ---------------- */
+  const meters = [];
+  BANDS.forEach((name) => {
+    const m = document.createElement("div");
+    m.className = "meter";
+    m.innerHTML = `<div class="track"><div class="fill" style="height:0%"></div><div class="gain" style="bottom:25%"></div></div><span class="small data">${name.replace(" Hz", "")}</span>`;
+    $("meters").appendChild(m);
+    meters.push(m);
+  });
+  function applyLevels(kv) {
+    if (Array.isArray(kv.lv)) kv.lv.forEach((db, k) => {
+      const pct = Math.max(0, Math.min(100, (db + 90) / 90 * 100));
+      meters[k].querySelector(".fill").style.height = pct + "%";
+    });
+    if (Array.isArray(kv.ga)) kv.ga.forEach((g, k) => {
+      const pct = Math.max(0, Math.min(100, (g + 10) / 40 * 100));
+      meters[k].querySelector(".gain").style.bottom = `calc(${pct}% - 1px)`;
+    });
+    if (typeof kv.cpu === "number") $("s-cpu").innerHTML = `${kv.cpu.toFixed(1)}% <span class="chip ${kv.cpu < 50 ? "good" : kv.cpu < 70 ? "warn" : "bad"}">${kv.cpu < 50 ? "OK" : kv.cpu < 70 ? "tight" : "too high"}</span>`;
+    if (typeof kv.gr === "number") $("s-gr").textContent = kv.gr > 0.05 ? `−${kv.gr.toFixed(1)} dB` : "idle";
+    if (typeof kv.howl === "number") $("s-howl").innerHTML = kv.howl > 0 ? `<span class="chip bad">−${kv.howl} dB</span>` : `<span class="chip good">quiet</span>`;
+  }
+  $("rec").addEventListener("click", () => { $("rec-status").textContent = "starting…"; send("rec 10"); });
+
+  /* ------------------------------------------------------------------ */
+  /* audiogram                                                          */
+  /* ------------------------------------------------------------------ */
+  const AG = { x0: 44, x1: 344, y0: 16, y1: 270, dbMin: -10, dbMax: 100 };
+  const fx = (hz) => AG.x0 + (Math.log2(hz / 250) / Math.log2(8000 / 250)) * (AG.x1 - AG.x0);
+  const fy = (db) => AG.y0 + ((db - AG.dbMin) / (AG.dbMax - AG.dbMin)) * (AG.y1 - AG.y0);
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent, text) {
+    const e = document.createElementNS(NS, tag);
+    Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+    if (text !== undefined) e.textContent = text;
+    parent.appendChild(e);
+    return e;
+  }
+  function drawAudiogram(hl, ear, floorFlags) {
+    const svg = $("audiogram");
+    svg.textContent = "";
+    // severity zones, the way audiologists shade them
+    const zones = [[-10, 25, "normal"], [25, 40, "mild"], [40, 55, "moderate"], [55, 70, "mod. severe"], [70, 90, "severe"], [90, 100, "profound"]];
+    zones.forEach(([a, b, name], i) => {
+      if (i % 2 === 0) el("rect", { class: "zone", x: AG.x0, y: fy(a), width: AG.x1 - AG.x0, height: fy(b) - fy(a) }, svg);
+      el("text", { class: "zone-t", x: AG.x1 - 4, y: fy(a) + 12, "text-anchor": "end" }, svg, name);
+    });
+    for (let db = -10; db <= 100; db += 10) {
+      el("line", { class: "grid", x1: AG.x0, x2: AG.x1, y1: fy(db), y2: fy(db) }, svg);
+      el("text", { class: "axis-t", x: AG.x0 - 6, y: fy(db) + 4, "text-anchor": "end" }, svg, String(db));
+    }
+    FREQS.forEach((hz) => {
+      el("line", { class: "grid", x1: fx(hz), x2: fx(hz), y1: AG.y0, y2: AG.y1 }, svg);
+      el("text", { class: "axis-t", x: fx(hz), y: AG.y1 + 16, "text-anchor": "middle" }, svg, hz >= 1000 ? `${hz / 1000}k` : String(hz));
+    });
+    el("text", { class: "axis-t", x: 4, y: 12 }, svg, "dB HL");
+    el("text", { class: "axis-t", x: AG.x1, y: AG.y1 + 30, "text-anchor": "end" }, svg, "Hz");
+    if (!hl) return;
+    const cls = ear === "left" ? "ear-left" : "ear-right";
+    const pts = FREQS.map((hz, k) => [fx(hz), fy(Math.max(-10, Math.min(100, hl[k])))]);
+    el("polyline", { class: "trace " + cls, points: pts.map((p) => p.join(",")).join(" ") }, svg);
+    pts.forEach(([x, y], k) => {
+      const extra = floorFlags && floorFlags[k] ? " mark-floor" : "";
+      if (ear === "left") {
+        el("path", { class: `mark ${cls}${extra}`, d: `M${x - 6} ${y - 6}L${x + 6} ${y + 6}M${x + 6} ${y - 6}L${x - 6} ${y + 6}` }, svg);
+      } else {
+        el("circle", { class: `mark ${cls}${extra}`, cx: x, cy: y, r: 6, style: "fill: var(--card)" }, svg);
+      }
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* hearing test (simplified ascending method)                          */
+  /* ------------------------------------------------------------------ */
+  let result = { hl: [10, 15, 25, 40, 55, 60], ear: "right", example: true, floors: [0, 0, 0, 0, 0, 0] };
+  let test = null;
+
+  function renderFit() {
+    drawAudiogram(result.hl, result.ear, result.floors);
+    $("ag-tag").textContent = result.example ? "Example result" : (result.calibrated ? "Your result" : "Your result (uncalibrated)");
+    $("ag-tag").className = "chip " + (result.example ? "warn" : result.calibrated ? "good" : "warn");
+    const rows = FREQS.map((hz, k) => {
+      const h = k === 0 ? result.hl[0] : (result.hl[k - 1] + result.hl[k]) / 2;
+      const g = Math.min(30, Math.max(0, h / 2)), cr = Math.min(3, 1 + Math.max(0, h) / 60);
+      return `<tr><td>${BANDS[k]}</td><td>${result.hl[k].toFixed(0)}</td><td>+${g.toFixed(1)}</td><td>${cr.toFixed(2)}:1</td></tr>`;
+    }).join("");
+    $("fit-table").innerHTML = `<thead><tr><th>Band</th><th>Loss dB HL</th><th>Gain dB</th><th>Compression</th></tr></thead><tbody>${rows}</tbody>`;
+    $("fit-note").textContent = result.example
+      ? "Example: a typical sloping high-frequency loss. Run the test to replace it with your own."
+      : result.calibrated
+        ? "Loss is measured against your saved normal-hearing reference for this earphone."
+        : "No reference saved yet, so loss is measured against your own best pitch. For real dB HL, have someone with normal hearing take the test once on the same earphone and volume, then tap the reference button.";
+  }
+
+  function present(hz, db) {
+    test.hz = hz; test.db = db;
+    $("test-freq").textContent = `${hz} Hz`;
+    $("test-prompt").textContent = "Listen…";
+    $("heard").disabled = $("not-heard").disabled = true;
+    const gap = 600 + Math.random() * 1200;          // unpredictable timing stops guessing
+    test.timer = setTimeout(() => {
+      send(`tone ${hz} ${db}`);
+      $("test-prompt").textContent = "Did you hear a beep?";
+      $("heard").disabled = $("not-heard").disabled = false;
+      test.timer = setTimeout(() => quiet(hz), 1200);
+    }, gap);
+  }
+
+  function nextFreq() {
+    const done = test.order.length - test.queue.length;
+    $("progress").innerHTML = test.order.map((_, i) => `<span class="${i < done ? "done" : i === done ? "now" : ""}"></span>`).join("");
+    if (!test.queue.length) return finishTest();
+    const hz = test.queue.shift();
+    test.state = { hz, phase: "down", ascHeard: {} };
+    present(hz, -50);
+  }
+
+  function answer(heard) {
+    if (!test) return;
+    clearTimeout(test.timer);
+    quiet(test.state.hz);   // keep the mic muted between beeps
+    const st = test.state;
+    let db = test.db;
+    if (st.phase === "down") {
+      if (heard && db > -100) { db -= 10; }
+      else if (heard) { return record(db, false); }
+      else { st.phase = "up"; db += 5; }
+    } else {
+      if (heard) {
+        st.ascHeard[db] = (st.ascHeard[db] || 0) + 1;
+        if (st.ascHeard[db] >= 2) return record(db, false);
+        db -= 10;                                     // drop and climb again
+      } else {
+        db += 5;
+        if (db > TONE_MAX) return record(TONE_MAX, true);
+      }
+    }
+    present(st.hz, db);
+  }
+
+  function record(db, floor) {
+    test.thr[test.state.hz] = db;
+    test.floor[test.state.hz] = floor;
+    nextFreq();
+  }
+
+  function finishTest() {
+    send("tone off");
+    send(`vol ${test.savedVol}`);
+    const thr = FREQS.map((hz) => test.thr[hz]);
+    const ref = store.get("openear.ref", null);
+    let hl;
+    if (ref) hl = thr.map((t, k) => Math.max(-10, t - ref[k]));
+    else { const best = Math.min(...thr); hl = thr.map((t) => t - best); }
+    result = { hl, ear: $("ear").value, example: false, calibrated: !!ref, thr, floors: FREQS.map((hz) => test.floor[hz]) };
+    store.set("openear.last", result);
+    test = null;
+    $("test-stage").hidden = true;
+    $("test-intro").hidden = false;
+    $("test-help").hidden = false;
+    $("fit-box").hidden = false;
+    renderFit();
+  }
+
+  $("start-test").addEventListener("click", () => {
+    test = { order: TEST_ORDER.slice(), queue: TEST_ORDER.slice(), thr: {}, floor: {}, savedVol: +$("vol").value };
+    send("bypass 0");
+    send("vol 0");
+    if (holdOK()) send(`tone 1000 ${SILENT}`);   // mic muted for the whole test
+    $("test-intro").hidden = true;
+    $("test-help").hidden = true;
+    $("fit-box").hidden = true;
+    $("test-stage").hidden = false;
+    nextFreq();
+  });
+  $("stop-test").addEventListener("click", () => {
+    if (test) { clearTimeout(test.timer); send("tone off"); send(`vol ${test.savedVol}`); }
+    test = null;
+    $("test-stage").hidden = true;
+    $("test-intro").hidden = false;
+    $("test-help").hidden = false;
+    $("fit-box").hidden = false;
+  });
+  $("heard").addEventListener("click", () => answer(true));
+  $("not-heard").addEventListener("click", () => answer(false));
+  $("apply-fit").addEventListener("click", () => {
+    send(`fit ${result.hl.map((h) => Math.max(0, Math.round(h))).join(" ")}`);
+    send("save");
+    send("state");
+    $("apply-fit").textContent = "Sent and saved";
+    setTimeout(() => { $("apply-fit").textContent = "Send to OpenEar and save"; }, 2500);
+  });
+  $("calibrate").addEventListener("click", () => {
+    if (!result.thr) { $("fit-note").textContent = "Run the test first: the reference is taken from a real result."; return; }
+    store.set("openear.ref", result.thr);
+    $("fit-note").textContent = "Saved as the normal-hearing reference for this phone. Results from now on are in dB HL.";
+  });
+
+  /* ------------------------------------------------------------------ */
+  const last = store.get("openear.last", null);
+  if (last && Array.isArray(last.hl)) result = last;
+  renderFit();
+  link = new DemoDevice();
+  send("state");
+})();
+</script>
+
+</body>
+</html>

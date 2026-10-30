@@ -1,0 +1,681 @@
+
+==== DSP (bit-exact vs 0.2.2 source, tone safety, howl guard, timing) ====
+OpenEar DSP test bench  (fs = 48000 Hz, block = 64 samples = 1.33 ms)
+
+[1] Crossover reconstruction (all bands 0 dB must be flat)
+  PASS  max deviation from flat = 0.0748 dB (limit 0.1 dB)
+
+[2] Band gains follow a fitted profile (sloping high-frequency loss)
+  fitted gains (dB): 5.0 6.2 10.0 16.2 23.8 28.8
+  PASS  mid-band gain error = 0.88 dB (limit 1.5 dB)
+
+[3] Input/output curve at 2 kHz (expansion, gain, compression, limit)
+  PASS  slope in linear zone = 1.04 (expect 1.0)
+  PASS  slope above knee = 0.58 (expect 0.5 for 2:1)
+  PASS  loud steady sound does not false-trigger the howl guard (0 events)
+  PASS  max output = -5.97 dBFS (ceiling -6 dBFS)
+
+[4] Safety: output never exceeds the ceiling, even with max gain
+  PASS  band gain clamped to 30 dB
+  PASS  ceiling clamped to -3 dBFS
+  PASS  peak output = -3.000 dBFS
+
+[5] Algorithmic delay (group delay of the filter bank)
+  impulse peak at 0.021 ms; group delay ~1.17 ms @1k, 0.56 ms @2k, 0.23 ms @4k
+  PASS  speech-band filter delay under 2 ms
+
+[6] Howl guard: feedback is pulled back and stays back; gain returns when it's gone
+  seed 1: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 2: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 3: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 4: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 5: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  PASS  howl guard engaged under feedback (every seed)
+  PASS  at most one brief re-howl in the first 60 s (worst seed 0)
+  PASS  at most 6 brief re-howls in 3 minutes of steady feedback (worst seed 1; 0.2.x ~25)
+  PASS  feedback gone, loud bursts every 20 s: attenuation 12 dB -> 0 dB within 8 minutes
+  volume +6 -> +3 dB with feedback: attenuation 12 -> 9 dB, re-howls + new howl events 0
+  PASS  volume 3 dB down with feedback: no re-howl in 20 s, attenuation 12 -> 9 dB (expected 9)
+  PASS  in bypass the guard lets go (12 -> 9 dB in 5 s)
+  bypass on 5 s, off: attenuation 12 -> 11 dB, re-howls + new howl events 0
+  PASS  bypass A/B with feedback: no re-howl in 20 s (0), attenuation kept (12 -> 11 dB)
+  hearing test (vol 0, tone, vol back): attenuation 12 -> 12 dB, re-howls + new howl events 0
+  PASS  hearing test then volume restored: no re-howl in 20 s (0)
+  PASS  band cut and restored with feedback: no re-howl in 20 s (0; attenuation 12 -> 11 dB)
+  volume -12 dB for 30 s, then +6, +6: attenuation 12 -> 0 -> 11 dB, re-howls + new howl events 0
+  PASS  volume down 12 dB for 30 s, then back up in two steps: no re-howl (0); the cut was given back while down (attenuation 0 dB)
+  PASS  one band cut at a time: attenuation kept (11 dB); all bands cut 6 dB: 12 -> 4 dB; no re-howl (0)
+  PASS  after a flat profile the attenuation goes within 30 s (12 -> 0 dB, 0 re-howls)
+  PASS  a NaN input resets the DSP state
+  PASS  after a NaN reset the howl memory is kept (re-howls + new events 0)
+  PASS  stronger feedback from 17.5 dB: 3 more steps, attenuation stops at 24.0 dB (cap 24)
+  PASS  volume up 12 dB with a howl remembered: attenuation 0 -> 11 dB before the next block
+  PASS  a required attenuation over 24 dB is held at 24 (24.0, then 24.0 dB)
+  PASS  settled at band gain 24 dB, all bands to 30: attenuation 12 -> 18 dB, no re-howl (0)
+  PASS  volume 6 dB down, feedback gone: attenuation 12 -> 6 dB in 20 s -> 0 dB after 7 min
+  PASS  volume cut to -20 dB afterwards: attenuation stays at 0 dB, never a boost (0.0 dB)
+
+[7] Demo signal for before/after spectrograms
+  wrote 192000 samples
+
+[8] Safety: hostile or corrupt parameters stay quiet
+  PASS  limit=NaN -> ceiling falls to the quiet end: -40.0 dBFS
+  PASS  tone asked at +60 dBFS -> plays at -20.0 dBFS (cap -20)
+  PASS  NaN/inf fields clamp to safe values (master -60, gain 30, ratio 1)
+
+[9] A NaN sample silences, resets the DSP, and audio recovers
+  PASS  every output sample finite and in range
+  PASS  DSP state reset once (1)
+  PASS  normal audio afterwards (gain -0.00 dB)
+
+[10] Bypass toggle ramps instead of jumping
+  PASS  largest step between half-cycles 11.7 dB (a hard switch = 20 dB)
+
+[11] Test tone fades in and out (no clicks)
+  PASS  1000 Hz: biggest sample step 100% of a clean tone's (a click would be far more)
+  PASS  1000 Hz: tone still plays at the asked level (0.00 dB off)
+  PASS  1000 Hz: silent after the tone is switched off
+  PASS  4000 Hz: biggest sample step 95% of a clean tone's (a click would be far more)
+  PASS  4000 Hz: tone still plays at the asked level (-0.00 dB off)
+  PASS  4000 Hz: silent after the tone is switched off
+
+[12] Optimised DSP == the 0.2.2 per-sample DSP source (frozen copy, compiled alike)
+  PASS  block  64: max difference 0.00e+00 over 216000 samples (0 not bit-identical), stats identical
+  PASS  block 128: max difference 0.00e+00 over 216000 samples (0 not bit-identical), stats identical
+  PASS  block  37: max difference 0.00e+00 over 216000 samples (0 not bit-identical), stats identical
+
+[13] Test tone level does not depend on the volume (safety cap holds)
+  PASS  vol +12 dB, tone -20 dBFS -> plays at -20.00 dBFS
+        (0.2.2 played the same request at -8.0 dBFS: over the cap)
+  PASS  vol +0 dB, tone -20 dBFS -> plays at -20.00 dBFS
+  PASS  vol -20 dB, tone -20 dBFS -> plays at -20.00 dBFS
+  PASS  howl guard at -9 dB, tone -40 dBFS -> plays at -40.00 dBFS
+
+[14] Tone level changes glide (no clicks), mic stays muted between beeps
+  PASS  largest sample step 100% of a clean -25 dBFS tone's
+  PASS  between beeps the output is -100.0 dBFS (mic muted)
+
+[15] Any block length works (split above 256 samples)
+  PASS  block length 1: all 8 output samples finite and sane
+  PASS  block length 255: all 2040 output samples finite and sane
+  PASS  block length 256: all 2048 output samples finite and sane
+  PASS  block length 1000: all 8000 output samples finite and sane
+
+[16] Tone fades and level glides take their designed time (no fast edges)
+  PASS  fade-in 10-90% takes 6.0 ms (design ~6)
+  PASS  fade-out 10-90% takes 6.0 ms (design ~6)
+  PASS  level glide up 10-90% takes 11.0 ms (design ~11)
+  PASS  level glide down 10-90% takes 11.0 ms (design ~11)
+
+[17] A tone keeps its level for 10 minutes (oscillator stays on its circle)
+  PASS  after 600 s the tone is -0.000 dB off its level
+
+ALL TESTS PASSED: 0 failure(s)
+
+---- howl guard at block 128 ----
+OpenEar DSP test bench  (fs = 48000 Hz, block = 128 samples = 2.67 ms)
+
+[6] Howl guard: feedback is pulled back and stays back; gain returns when it's gone
+  seed 1: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 2: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 3: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 4: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 5: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  PASS  howl guard engaged under feedback (every seed)
+  PASS  at most one brief re-howl in the first 60 s (worst seed 0)
+  PASS  at most 6 brief re-howls in 3 minutes of steady feedback (worst seed 1; 0.2.x ~25)
+  PASS  feedback gone, loud bursts every 20 s: attenuation 12 dB -> 0 dB within 8 minutes
+  volume +6 -> +3 dB with feedback: attenuation 12 -> 9 dB, re-howls + new howl events 0
+  PASS  volume 3 dB down with feedback: no re-howl in 20 s, attenuation 12 -> 9 dB (expected 9)
+  PASS  in bypass the guard lets go (12 -> 9 dB in 5 s)
+  bypass on 5 s, off: attenuation 12 -> 11 dB, re-howls + new howl events 0
+  PASS  bypass A/B with feedback: no re-howl in 20 s (0), attenuation kept (12 -> 11 dB)
+  hearing test (vol 0, tone, vol back): attenuation 12 -> 12 dB, re-howls + new howl events 0
+  PASS  hearing test then volume restored: no re-howl in 20 s (0)
+  PASS  band cut and restored with feedback: no re-howl in 20 s (0; attenuation 12 -> 11 dB)
+  volume -12 dB for 30 s, then +6, +6: attenuation 12 -> 0 -> 11 dB, re-howls + new howl events 0
+  PASS  volume down 12 dB for 30 s, then back up in two steps: no re-howl (0); the cut was given back while down (attenuation 0 dB)
+  PASS  one band cut at a time: attenuation kept (11 dB); all bands cut 6 dB: 12 -> 4 dB; no re-howl (0)
+  PASS  after a flat profile the attenuation goes within 30 s (12 -> 0 dB, 0 re-howls)
+  PASS  a NaN input resets the DSP state
+  PASS  after a NaN reset the howl memory is kept (re-howls + new events 0)
+  PASS  stronger feedback from 17.5 dB: 3 more steps, attenuation stops at 24.0 dB (cap 24)
+  PASS  volume up 12 dB with a howl remembered: attenuation 0 -> 11 dB before the next block
+  PASS  a required attenuation over 24 dB is held at 24 (24.0, then 24.0 dB)
+  PASS  settled at band gain 24 dB, all bands to 30: attenuation 12 -> 18 dB, no re-howl (0)
+  PASS  volume 6 dB down, feedback gone: attenuation 12 -> 6 dB in 20 s -> 0 dB after 7 min
+  PASS  volume cut to -20 dB afterwards: attenuation stays at 0 dB, never a boost (0.0 dB)
+
+ALL TESTS PASSED: 0 failure(s)
+
+==== DSP under AddressSanitizer + UBSan ====
+OpenEar DSP test bench  (fs = 48000 Hz, block = 64 samples = 1.33 ms)
+
+[1] Crossover reconstruction (all bands 0 dB must be flat)
+  PASS  max deviation from flat = 0.0748 dB (limit 0.1 dB)
+
+[2] Band gains follow a fitted profile (sloping high-frequency loss)
+  fitted gains (dB): 5.0 6.2 10.0 16.2 23.8 28.8
+  PASS  mid-band gain error = 0.88 dB (limit 1.5 dB)
+
+[3] Input/output curve at 2 kHz (expansion, gain, compression, limit)
+  PASS  slope in linear zone = 1.04 (expect 1.0)
+  PASS  slope above knee = 0.58 (expect 0.5 for 2:1)
+  PASS  loud steady sound does not false-trigger the howl guard (0 events)
+  PASS  max output = -5.97 dBFS (ceiling -6 dBFS)
+
+[4] Safety: output never exceeds the ceiling, even with max gain
+  PASS  band gain clamped to 30 dB
+  PASS  ceiling clamped to -3 dBFS
+  PASS  peak output = -3.000 dBFS
+
+[5] Algorithmic delay (group delay of the filter bank)
+  impulse peak at 0.021 ms; group delay ~1.17 ms @1k, 0.56 ms @2k, 0.23 ms @4k
+  PASS  speech-band filter delay under 2 ms
+
+[6] Howl guard: feedback is pulled back and stays back; gain returns when it's gone
+  seed 1: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 2: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 3: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 4: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  seed 5: howl events 5, re-howls after the first pull-back: 0 in 60 s, 1 in 180 s
+  PASS  howl guard engaged under feedback (every seed)
+  PASS  at most one brief re-howl in the first 60 s (worst seed 0)
+  PASS  at most 6 brief re-howls in 3 minutes of steady feedback (worst seed 1; 0.2.x ~25)
+  PASS  feedback gone, loud bursts every 20 s: attenuation 12 dB -> 0 dB within 8 minutes
+  volume +6 -> +3 dB with feedback: attenuation 12 -> 9 dB, re-howls + new howl events 0
+  PASS  volume 3 dB down with feedback: no re-howl in 20 s, attenuation 12 -> 9 dB (expected 9)
+  PASS  in bypass the guard lets go (12 -> 9 dB in 5 s)
+  bypass on 5 s, off: attenuation 12 -> 11 dB, re-howls + new howl events 0
+  PASS  bypass A/B with feedback: no re-howl in 20 s (0), attenuation kept (12 -> 11 dB)
+  hearing test (vol 0, tone, vol back): attenuation 12 -> 12 dB, re-howls + new howl events 0
+  PASS  hearing test then volume restored: no re-howl in 20 s (0)
+  PASS  band cut and restored with feedback: no re-howl in 20 s (0; attenuation 12 -> 11 dB)
+  volume -12 dB for 30 s, then +6, +6: attenuation 12 -> 0 -> 11 dB, re-howls + new howl events 0
+  PASS  volume down 12 dB for 30 s, then back up in two steps: no re-howl (0); the cut was given back while down (attenuation 0 dB)
+  PASS  one band cut at a time: attenuation kept (11 dB); all bands cut 6 dB: 12 -> 4 dB; no re-howl (0)
+  PASS  after a flat profile the attenuation goes within 30 s (12 -> 0 dB, 0 re-howls)
+  PASS  a NaN input resets the DSP state
+  PASS  after a NaN reset the howl memory is kept (re-howls + new events 0)
+  PASS  stronger feedback from 17.5 dB: 3 more steps, attenuation stops at 24.0 dB (cap 24)
+  PASS  volume up 12 dB with a howl remembered: attenuation 0 -> 11 dB before the next block
+  PASS  a required attenuation over 24 dB is held at 24 (24.0, then 24.0 dB)
+  PASS  settled at band gain 24 dB, all bands to 30: attenuation 12 -> 18 dB, no re-howl (0)
+  PASS  volume 6 dB down, feedback gone: attenuation 12 -> 6 dB in 20 s -> 0 dB after 7 min
+  PASS  volume cut to -20 dB afterwards: attenuation stays at 0 dB, never a boost (0.0 dB)
+
+[7] Demo signal for before/after spectrograms
+  wrote 192000 samples
+
+[8] Safety: hostile or corrupt parameters stay quiet
+  PASS  limit=NaN -> ceiling falls to the quiet end: -40.0 dBFS
+  PASS  tone asked at +60 dBFS -> plays at -20.0 dBFS (cap -20)
+  PASS  NaN/inf fields clamp to safe values (master -60, gain 30, ratio 1)
+
+[9] A NaN sample silences, resets the DSP, and audio recovers
+  PASS  every output sample finite and in range
+  PASS  DSP state reset once (1)
+  PASS  normal audio afterwards (gain -0.00 dB)
+
+[10] Bypass toggle ramps instead of jumping
+  PASS  largest step between half-cycles 11.7 dB (a hard switch = 20 dB)
+
+[11] Test tone fades in and out (no clicks)
+  PASS  1000 Hz: biggest sample step 100% of a clean tone's (a click would be far more)
+  PASS  1000 Hz: tone still plays at the asked level (0.00 dB off)
+  PASS  1000 Hz: silent after the tone is switched off
+  PASS  4000 Hz: biggest sample step 95% of a clean tone's (a click would be far more)
+  PASS  4000 Hz: tone still plays at the asked level (-0.00 dB off)
+  PASS  4000 Hz: silent after the tone is switched off
+
+[12] Optimised DSP == the 0.2.2 per-sample DSP source (frozen copy, compiled alike)
+  PASS  block  64: max difference 0.00e+00 over 216000 samples (0 not bit-identical), stats identical
+  PASS  block 128: max difference 0.00e+00 over 216000 samples (0 not bit-identical), stats identical
+  PASS  block  37: max difference 0.00e+00 over 216000 samples (0 not bit-identical), stats identical
+
+[13] Test tone level does not depend on the volume (safety cap holds)
+  PASS  vol +12 dB, tone -20 dBFS -> plays at -20.00 dBFS
+        (0.2.2 played the same request at -8.0 dBFS: over the cap)
+  PASS  vol +0 dB, tone -20 dBFS -> plays at -20.00 dBFS
+  PASS  vol -20 dB, tone -20 dBFS -> plays at -20.00 dBFS
+  PASS  howl guard at -9 dB, tone -40 dBFS -> plays at -40.00 dBFS
+
+[14] Tone level changes glide (no clicks), mic stays muted between beeps
+  PASS  largest sample step 100% of a clean -25 dBFS tone's
+  PASS  between beeps the output is -100.0 dBFS (mic muted)
+
+[15] Any block length works (split above 256 samples)
+  PASS  block length 1: all 8 output samples finite and sane
+  PASS  block length 255: all 2040 output samples finite and sane
+  PASS  block length 256: all 2048 output samples finite and sane
+  PASS  block length 1000: all 8000 output samples finite and sane
+
+[16] Tone fades and level glides take their designed time (no fast edges)
+  PASS  fade-in 10-90% takes 6.0 ms (design ~6)
+  PASS  fade-out 10-90% takes 6.0 ms (design ~6)
+  PASS  level glide up 10-90% takes 11.0 ms (design ~11)
+  PASS  level glide down 10-90% takes 11.0 ms (design ~11)
+
+[17] A tone keeps its level for 10 minutes (oscillator stays on its circle)
+  PASS  after 600 s the tone is -0.000 dB off its level
+
+ALL TESTS PASSED: 0 failure(s)
+
+==== Console (cli.c) ====
+OpenEar console test
+
+[help / info]
+  PASS  help lists the commands
+  PASS  ver prints 0.3.1
+  PASS  empty line prints nothing
+  PASS  unknown command is reported
+
+[band settings]
+  PASS  g all 12 sets every band
+  PASS  g 3 20 sets band 3 only
+  PASS  band 6 is rejected
+  PASS  non-number rejected, value kept
+  PASS  g 2 99 clamps to 30 dB
+  PASS  cr 1 2.5
+  PASS  knee all -50
+  PASS  exp 0 -65 2
+  PASS  exp with a missing ratio is rejected
+  PASS  att 3 / rel 120
+
+[safety through the console]
+  PASS  limit nan rejected (stays -6)
+  PASS  vol inf rejected
+  PASS  limit 0 clamps to -3 dBFS
+  PASS  tone 1000 0 plays at -20 dBFS
+  PASS  tone off
+  PASS  tone without a level is rejected
+  PASS  hpvol 0 clamps to the loudest allowed code (4), got 4
+  PASS  hpvol 99 clamps to 63
+  PASS  sidetone gain 2 (too loud) rejected
+  PASS  sidetone 1 20 accepted
+
+[bluetooth limits]
+  PASS  over BLE, hpvol 4 is held at 12
+  PASS  over BLE, vol 12 is held at +6 dB
+  PASS  over USB, hpvol 4 is allowed
+
+[fitting, bypass, profile]
+  PASS  fit raises high bands more
+  PASS  fit with 3 values rejected
+  PASS  bypass toggles on
+  PASS  bypass 0
+  PASS  save stores the profile
+  PASS  load restores it
+
+[a stored profile can't get around the Bluetooth limits]
+  PASS  over Bluetooth, load of a loud profile is held to hpvol 12 / +6 dB
+  PASS  over USB the stored values load as saved
+  PASS  a playing test tone is not written to the profile
+  PASS  a stored tone is not restored by load
+
+[app protocol]
+  PASS  STATE line parses: STATE v=0.3.1 g=0.0,0.0,0.0,0.0,0.0,0.0 cr=1.00,1.00,1.00,1.00,1.00,1.00 knee=-45,-45,-45,-45,-45,-45 et=-70,-70,-70,-70,-70,-70 er=1.0,1.0,1.0,1.0,1.0,1.0 vol=0.0 lim=-6.0 byp=0 tone=0 hp=4
+
+  PASS  STATE gains match the DSP
+  PASS  STATE is exactly one line
+  PASS  LV line parses: LV lv=0.0,0.0,0.0,0.0,0.0,0.0 ga=0.0,0.0,0.0,0.0,0.0,0.0 gr=0.0 howl=0 cpu=23.5
+
+  PASS  batt prints a parseable BATT line
+  PASS  i2cscan lists the fake devices
+
+[recorder]
+  PASS  rec 5 starts
+  PASS  rec ? shows status
+  PASS  rec stop
+  PASS  rec 99999 s rejected
+  PASS  rec refused when audio is not running
+  PASS  rec without a recorder says so
+
+[stat / show / raw]
+  PASS  stat shows CPU (avg, peak) and late blocks with their window
+  PASS  stat shows the deadline slack, interrupt delay and played blocks
+  PASS  stat shows the clock status
+  PASS  stat latency matches the 0.3 timing (2N-6 samples) and shows the phase fixes
+  PASS  show prints the band table
+  PASS  raw prints samples and peak
+
+[audio status / restart, hpvol while audio is off]
+  PASS  audio shows running
+  PASS  audio shows not running
+  PASS  hpvol while audio is off says it is only stored
+  PASS  audio restart restarts the streams
+  PASS  audio restart over Bluetooth unmutes within the Bluetooth limit (hpvol 12, codec set 12)
+  PASS  and at no more than +6 dB volume (DSP had 6.0 dB at the restart)
+  PASS  audio restart over Bluetooth with only vol too loud: held to +6 dB, hpvol kept at 20
+  PASS  audio restart on the console keeps the console volume (hpvol 4)
+  PASS  audio with a bad argument is rejected
+
+[test-tone auto-stop (cli_tick)]
+  PASS  an audible tone still plays after 14.9 s
+  PASS  an audible tone stops by itself after 15 s, and the DSP is told
+  PASS  a changed tone restarts the 15 s clock
+  PASS  ...and then stops 15 s after the change
+  PASS  the silent hold (-100 dBFS) is not stopped at 15 s (mic stays muted between beeps)
+  PASS  the silent hold stops after 60 s, so the mic comes back
+  PASS  tone off stays off
+
+ALL CONSOLE TESTS PASSED: 0 failure(s)
+
+==== SD recorder (recorder.c on a fake card, ASan) ====
+OpenEar recorder test (real recorder.c, fake SD card)
+  PASS  rec_start opens OE000.WAV
+
+[rec] saved OE000.WAV: 1.0 s, 0 overruns
+>   PASS  recording finished by itself after 1 s
+  PASS  WAV header: RIFF/WAVE, PCM fmt chunk
+  PASS  WAV format: 2 channels, 16000 Hz, byte rate 64000, block align 4, 16 bits
+  PASS  data chunk 64000 bytes = 1 s, RIFF size 64036, file 64044 bytes
+  PASS  all 16000 frames match the per-sample model (left = mic, right = output), 0 differ
+  PASS  second recording starts
+
+[rec] saved OE000.WAV: 1.0 s, 0 overruns
+>   PASS  second recording also matches a fresh model (0 differ)
+  PASS  third recording starts
+  PASS  ring overruns counted while the card can't keep up (8021, expected 8021)
+
+[rec] saved OE000.WAV: 0.5 s, 8021 overruns
+>   PASS  'rec stop' writes what the ring kept before closing (32768 bytes, matches the model)
+  PASS  fourth recording starts (5 s)
+
+[rec] saved OE000.WAV: 0.5 s, 0 overruns
+>   PASS  'rec stop' mid-chunk writes all 8000 frames, the last 832 from a partial chunk (32000 bytes)
+
+ALL RECORDER TESTS PASSED: 0 failure(s)
+
+==== Audio I/O simulation (audio_io.c on modelled DMA/I2S, 0.2.2 vs 0.3) ====
+test_audio_sim.c:55:26: warning: 'fixes0' defined but not used [-Wunused-variable]
+   55 | static uint32_t blocks0, fixes0;
+      |                          ^~~~~~
+OpenEar 0.2.2 audio_io.c on the simulated hardware (block 64)
+  0.2.2: DSP 65%, F=6, no Bluetooth            blocks   1500  late   960 (64.0%)  heard glitches     0  latency 112 samples
+  0.2.2: DSP 65%, F=6, Bluetooth hold-offs     blocks    445  late   398 (89.4%)  heard glitches  2605  latency 112 samples
+  PASS  0.2.2 timing with a 65% DSP and Bluetooth: late blocks and audible glitches (qualitatively as on the board; the model's rates are not calibrated)
+
+0.2.2 MODEL SHOWS LATE BLOCKS AND GLITCHES (as on the board)
+OpenEar 0.3 audio_io.c on the simulated hardware (block 64)
+
+[normal operation: DSP 36% (cycle bench) + 5% recorder and interrupt overhead, Bluetooth-like interrupts]
+  DSP 41%, FIFO read-ahead F=2                 blocks   3000  late     0 ( 0.0%)  heard glitches     0  latency 122 samples  slack>=5  delay<=14  phase fixes 0
+  PASS  F=2: every sample played once, in order (no static), no late blocks
+  PASS  F=2: no phase fixes when nothing slips (0)
+  PASS  F=2: constant delay 122 samples (2.54 ms) = 2N-6, as 'stat' reports
+  DSP 41%, FIFO read-ahead F=6                 blocks   3000  late     0 ( 0.0%)  heard glitches     0  latency 122 samples  slack>=1  delay<=14  phase fixes 0
+  PASS  F=6: every sample played once, in order (no static), no late blocks
+  PASS  F=6: no phase fixes when nothing slips (0)
+  PASS  F=6: constant delay 122 samples (2.54 ms) = 2N-6, as 'stat' reports
+  DSP 41%, FIFO read-ahead F=16                blocks   3000  late     8 ( 0.3%)  heard glitches     6  latency 122 samples  slack>=0  delay<=14  phase fixes 0
+  PASS  F=16 (full FIFO, worst case; the board measured F ~ 0): audio keeps running, late 0.27% (<= 0.5%)
+  PASS  F=16: no phase fixes when nothing slips (0)
+  PASS  F=16: constant delay 122 samples (2.54 ms) = 2N-6, as 'stat' reports
+  DSP 41%, F=6, no Bluetooth                   blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 122 samples  slack>=25  delay<=1  phase fixes 0
+  PASS  slack figure 25 samples matches the timing design (N-6-F-DSP = 26)
+  PASS  interrupt delay 1 samples with no Bluetooth
+  DSP 41%, F=6, Bluetooth hold-offs <= 15      blocks   3000  late     0 ( 0.0%)  heard glitches     0  latency 122 samples  slack>=6  delay<=16  phase fixes 0
+  PASS  interrupt delay shows the Bluetooth hold-offs: 16 samples (<= 15 + 2)
+
+[the 0.3.0 board: the output side loses ~21 samples a second against the input]
+  BOARD: DSP 35-42%, F=6, TX slips every 49 ms blocks   7500  late     0 ( 0.0%)  heard glitches   504  latency 122 samples  slack>=12  delay<=7  phase fixes 100
+  PASS  output slipping 1 sample / 49 ms: no late blocks (0), slack >= 12
+  PASS  phase fixes 100 for 202 slipped samples (2 samples each)
+  PASS  only the slips themselves and the fixes are heard: 504 glitches for 202 slips + 100 fixes (0.3.0 without the lock: ~5500)
+  input slipping instead (other direction)     blocks   7497  late     0 ( 0.0%)  heard glitches   402  latency 122 samples  slack>=13  delay<=6  phase fixes 100
+  PASS  input slipping 1 sample / 49 ms: no late blocks (0), 100 phase fixes for 202 slips
+
+[tolerance: longer Bluetooth interrupts (unknown on this board; stat's 'interrupt delay' will tell)]
+  DSP 41%, F=6, hold-offs <= 20 samples        blocks   3000  late     3 ( 0.1%)  heard glitches     6  latency 122 samples  slack>=0  delay<=21  phase fixes 0
+  DSP 41%, F=6, hold-offs <= 30 samples        blocks   3000  late    23 ( 0.8%)  heard glitches    38  latency 122 samples  slack>=0  delay<=29  phase fixes 0
+  DSP 41%, F=6, hold-offs <= 45 samples        blocks    474  late    10 ( 2.1%)  heard glitches 161432  latency 122 samples  slack>=0  delay<=64  phase fixes 0
+  (informational: the board's numbers decide; at 64 samples a block, Bluetooth interrupts up to ~26 samples are absorbed)
+
+[stat end to end: the real cli.c 'stat' on the real audio_io.c counters]
+  DSP 40%, F=6, no Bluetooth
+
+blocks 36096 (played 38621)  block 64 samples (1.33 ms) @ 48000 Hz
+DSP time avg 40.1%  peak 40.6% of real time  late blocks 0 of 375  (since last 'stat')
+deadline slack >= 26 samples (0.54 ms)  interrupt delay <= 0 samples  audio restarts 0
+output phase fixes 0  (2-sample steps keeping output in step with input)
+clock: timer ok, DWT counting
+limiter GR 0.0 dB  howl events 0  howl atten 0 dB  clipped 0  resets 0
+est. latency: 2.5 ms buffering + ~1 ms filters + codec
+  PASS  stat output parses
+  PASS  stat DSP time avg 40.1% / peak 40.6% (simulated DSP: 40%)
+  PASS  stat late blocks 0 of 375 = the 0.5 s window since the first stat
+  PASS  stat slack 26 samples (design 27), interrupt delay 0
+  PASS  stat blocks 36096 / played 38621 are the interrupt counters; both grew by 375 / 375 in the window
+
+[one block overruns by more than a block (a pile-up of interrupts)]
+  PASS  audio carries on by itself (blocks 36733 -> 37372): the count-to-zero during the overrun was not lost
+  PASS  the output stream carries on too (played 39257 -> 39896)
+  PASS  and the last 0.2 s is clean again (0 glitches)
+
+[parameter hand-over (dsp_link.c): latest wins, even if the interrupt is slow]
+  PASS  a change is in the DSP when push returns (state shows it)
+  PASS  after a stalled interrupt the latest change wins (vol -7 dB)
+  PASS  a stale change is not applied over a newer one after a restart (tone off)
+
+[a 'save' pauses audio for a 50 ms flash write]
+  PASS  no spurious watchdog restart after the pause (restarts 0 -> 0)
+
+[input stops and nothing restarts it (no timer: watchdog off)]
+  PASS  after 5 blocks the codec plays silence, not the last blocks on a loop (0 non-zero)
+
+[30 audio starts while Bluetooth interrupts steal time from the main loop]
+  PASS  every start landed at the designed phase (worst slack 18 samples, 0 bad)
+  PASS  the codec was never unmuted while the output stream was off (0 times)
+
+[headroom: the 0.2.2 DSP cost (65%) with the 0.3 timing]
+  DSP 65%, F=6, Bluetooth hold-offs            blocks   3000  late    58 ( 1.9%)  heard glitches    80  latency 122 samples  slack>=0  delay<=14  phase fixes 0
+  (informational: with the old DSP cost the new timing leaves 1.93% late; the faster DSP is needed too)
+
+[overload: DSP longer than the deadline]
+  DSP 95%, F=6                                 blocks    750  late   750 (100.0%)  heard glitches  1502  latency 122 samples  slack>=0  delay<=0  phase fixes 0
+  PASS  late blocks are counted (750 of 750) and slack reads 0
+
+[watchdog: the RX DMA stalls, the main loop restarts audio]
+  PASS  audio_init: codec ready
+  PASS  audio_restart starts audio, then unmutes at 22
+  PASS  audio stopped; no restart within 25 ms
+  PASS  the restart came 31.3 ms after the stall (design: 30 ms)
+  PASS  RX stall: restarted once within ~30 ms, audio flows again at the same volume (blocks 50842 -> 51077)
+  PASS  TX stall: also restarted (played blocks 53738 -> 53972)
+  PASS  with audio stopped, a volume change does not unmute the codec
+  PASS  audio_restart unmutes only after starting
+  PASS  no codec clock: start times out (-10), codec muted
+  PASS  after the timeout the DMA channels were released: the next start works
+  PASS  audio_stop mutes the codec
+
+ALL AUDIO I/O SIMULATION TESTS PASSED: 0 failure(s)
+OpenEar 0.3 audio_io.c on the simulated hardware (block 128)
+
+[normal operation: DSP 36% (cycle bench) + 5% recorder and interrupt overhead, Bluetooth-like interrupts]
+  DSP 41%, FIFO read-ahead F=2                 blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=50  delay<=12  phase fixes 0
+  PASS  F=2: every sample played once, in order (no static), no late blocks
+  PASS  F=2: no phase fixes when nothing slips (0)
+  PASS  F=2: constant delay 250 samples (5.21 ms) = 2N-6, as 'stat' reports
+  DSP 41%, FIFO read-ahead F=6                 blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=46  delay<=12  phase fixes 0
+  PASS  F=6: every sample played once, in order (no static), no late blocks
+  PASS  F=6: no phase fixes when nothing slips (0)
+  PASS  F=6: constant delay 250 samples (5.21 ms) = 2N-6, as 'stat' reports
+  DSP 41%, FIFO read-ahead F=16                blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=36  delay<=12  phase fixes 0
+  PASS  F=16 (full FIFO, worst case; the board measured F ~ 0): audio keeps running, late 0.00% (<= 0.5%)
+  PASS  F=16: no phase fixes when nothing slips (0)
+  PASS  F=16: constant delay 250 samples (5.21 ms) = 2N-6, as 'stat' reports
+  DSP 41%, F=6, no Bluetooth                   blocks    750  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=63  delay<=1  phase fixes 0
+  PASS  slack figure 63 samples matches the timing design (N-6-F-DSP = 64)
+  PASS  interrupt delay 1 samples with no Bluetooth
+  DSP 41%, F=6, Bluetooth hold-offs <= 15      blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=46  delay<=16  phase fixes 0
+  PASS  interrupt delay shows the Bluetooth hold-offs: 16 samples (<= 15 + 2)
+
+[the 0.3.0 board: the output side loses ~21 samples a second against the input]
+  BOARD: DSP 35-42%, F=6, TX slips every 49 ms blocks   3750  late     0 ( 0.0%)  heard glitches   506  latency 250 samples  slack>=58  delay<=6  phase fixes 100
+  PASS  output slipping 1 sample / 49 ms: no late blocks (0), slack >= 58
+  PASS  phase fixes 100 for 203 slipped samples (2 samples each)
+  PASS  only the slips themselves and the fixes are heard: 506 glitches for 203 slips + 100 fixes (0.3.0 without the lock: ~5500)
+  input slipping instead (other direction)     blocks   3749  late     0 ( 0.0%)  heard glitches   402  latency 250 samples  slack>=55  delay<=6  phase fixes 100
+  PASS  input slipping 1 sample / 49 ms: no late blocks (0), 100 phase fixes for 203 slips
+
+[tolerance: longer Bluetooth interrupts (unknown on this board; stat's 'interrupt delay' will tell)]
+  DSP 41%, F=6, hold-offs <= 20 samples        blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=27  delay<=21  phase fixes 0
+  DSP 41%, F=6, hold-offs <= 30 samples        blocks   1500  late     1 ( 0.1%)  heard glitches     2  latency 250 samples  slack>=0  delay<=29  phase fixes 0
+  DSP 41%, F=6, hold-offs <= 45 samples        blocks   1500  late     4 ( 0.3%)  heard glitches     8  latency 250 samples  slack>=0  delay<=43  phase fixes 0
+  (informational: the board's numbers decide; at 64 samples a block, Bluetooth interrupts up to ~64 samples are absorbed)
+
+[stat end to end: the real cli.c 'stat' on the real audio_io.c counters]
+  DSP 40%, F=6, no Bluetooth
+
+blocks 19312 (played 19310)  block 128 samples (2.67 ms) @ 48000 Hz
+DSP time avg 40.0%  peak 40.6% of real time  late blocks 0 of 188  (since last 'stat')
+deadline slack >= 64 samples (1.33 ms)  interrupt delay <= 0 samples  audio restarts 0
+output phase fixes 0  (2-sample steps keeping output in step with input)
+clock: timer ok, DWT counting
+limiter GR 0.0 dB  howl events 0  howl atten 0 dB  clipped 0  resets 0
+est. latency: 5.2 ms buffering + ~1 ms filters + codec
+  PASS  stat output parses
+  PASS  stat DSP time avg 40.0% / peak 40.6% (simulated DSP: 40%)
+  PASS  stat late blocks 0 of 188 = the 0.5 s window since the first stat
+  PASS  stat slack 64 samples (design 65), interrupt delay 0
+  PASS  stat blocks 19312 / played 19310 are the interrupt counters; both grew by 188 / 187 in the window
+
+[one block overruns by more than a block (a pile-up of interrupts)]
+  PASS  audio carries on by itself (blocks 19630 -> 19951): the count-to-zero during the overrun was not lost
+  PASS  the output stream carries on too (played 19628 -> 19948)
+  PASS  and the last 0.2 s is clean again (0 glitches)
+
+[parameter hand-over (dsp_link.c): latest wins, even if the interrupt is slow]
+  PASS  a change is in the DSP when push returns (state shows it)
+  PASS  after a stalled interrupt the latest change wins (vol -7 dB)
+  PASS  a stale change is not applied over a newer one after a restart (tone off)
+
+[a 'save' pauses audio for a 50 ms flash write]
+  PASS  no spurious watchdog restart after the pause (restarts 0 -> 0)
+
+[input stops and nothing restarts it (no timer: watchdog off)]
+  PASS  after 5 blocks the codec plays silence, not the last blocks on a loop (0 non-zero)
+
+[30 audio starts while Bluetooth interrupts steal time from the main loop]
+  PASS  every start landed at the designed phase (worst slack 57 samples, 0 bad)
+  PASS  the codec was never unmuted while the output stream was off (0 times)
+
+[headroom: the 0.2.2 DSP cost (65%) with the 0.3 timing]
+  DSP 65%, F=6, Bluetooth hold-offs            blocks   1500  late     0 ( 0.0%)  heard glitches     0  latency 250 samples  slack>=8  delay<=12  phase fixes 0
+  (informational: with the old DSP cost the new timing leaves 0.00% late; the faster DSP is needed too)
+
+[overload: DSP longer than the deadline]
+  DSP 95%, F=6                                 blocks    375  late   375 (100.0%)  heard glitches     0  latency 250 samples  slack>=0  delay<=0  phase fixes 0
+  PASS  late blocks are counted (375 of 375) and slack reads 0
+
+[watchdog: the RX DMA stalls, the main loop restarts audio]
+  PASS  audio_init: codec ready
+  PASS  audio_restart starts audio, then unmutes at 22
+  PASS  audio stopped; no restart within 25 ms
+  PASS  the restart came 32.9 ms after the stall (design: 30 ms)
+  PASS  RX stall: restarted once within ~30 ms, audio flows again at the same volume (blocks 26704 -> 26822)
+  PASS  TX stall: also restarted (played blocks 26869 -> 26986)
+  PASS  with audio stopped, a volume change does not unmute the codec
+  PASS  audio_restart unmutes only after starting
+  PASS  no codec clock: start times out (-10), codec muted
+  PASS  after the timeout the DMA channels were released: the next start works
+  PASS  audio_stop mutes the codec
+
+ALL AUDIO I/O SIMULATION TESTS PASSED: 0 failure(s)
+
+==== Boot order and safety-path source checks ====
+  PASS  audio_init: bus, then codec, then PMIC mic power
+  PASS  audio_init: codec powered down on failure
+  PASS  codec_off: mutes and shuts the codec down
+  PASS  audio_init: PMIC driver only after a timed probe
+  PASS  audio_init: mic power return code is used, not ignored
+  PASS  max9867_init: leaves a running bus alone
+  PASS  max9867_init: a stopped bus is started via bus_init()
+  PASS  max9867_init: volume muted (0x40) before the DAC is enabled
+  PASS  max9867.c: transfers recover a busy bus once
+  PASS  max9867.c: every register access goes through xfer()
+  PASS  main: pin report, audio init, bluetooth, then start audio and unmute (audio_restart)
+  PASS  main: sidetone/hpvol refused unless the codec is ready
+  PASS  main: audio starts only if init succeeded, and main never unmutes the codec itself
+  PASS  fuelgauge.c: no second bus init
+  PASS  codec_bus.c: FIFO thresholds 1, as the PMIC driver needs
+  PASS  codec_bus.c: init and recovery both use bus_start()
+  PASS  nothing but oe_time.c reads the DWT cycle counter []
+  PASS  main loop clock: the hardware timer, falling back to the audio block count
+  PASS  parameter hand-over and audio start waits have a loop-count limit too
+  PASS  Bluetooth crystal trim wait has a timeout
+  PASS  audio_restart: unmutes only after a good start, mutes on failure
+  PASS  audio_set_volume: the codec is never unmuted while audio isn't running (hpvol, load)
+  PASS  TX interrupt silences a buffer only after 2 output blocks with no input block (a stalled input)
+  PASS  audio watchdog watches both the RX and the TX stream
+  PASS  stored volume codes are clamped like typed ones (boot and 'load')
+  PASS  hardware watchdog enabled and fed by the main loop
+  PASS  watchdog disabled before the slow boot steps, enabled only after them
+  PASS  main loop restarts audio if its interrupt stops
+
+ALL INIT-ORDER CHECKS PASSED
+
+==== Cortex-M4 cycle bench (Unicorn emulator) ====
+OpenEar cycle bench (firmware DSP), Cortex-M4F @ 100 MHz, estimate +-25%
+  PASS  block  64 mic block (fitted profile)   35572 instructions, ~ 48974 cycles = 36.7% of the block (limit 45%)
+  PASS  block  64 hearing-test tone block      36788 instructions, ~ 50127 cycles = 37.6% of the block (limit 45%)
+  PASS  block  64 mic block while recording    40313 instructions, ~ 55412 cycles = 41.6% of the block (limit 45%)
+  PASS  block 128 mic block (fitted profile)   67328 instructions, ~ 92002 cycles = 34.5% of the block (limit 45%)
+  PASS  block 128 hearing-test tone block      69779 instructions, ~ 94385 cycles = 35.4% of the block (limit 45%)
+  PASS  block 128 mic block while recording    76674 instructions, ~104637 cycles = 39.2% of the block (limit 45%)
+
+ALL CYCLE CHECKS PASSED
+
+==== Phone app against the real console code (headless Chromium) ====
+
+[load]
+  PASS  page loads with a title: 'OpenEar Fitting'
+  PASS  starts in demo mode
+
+[connect through the mocked Bluetooth link]
+  PASS  status shows Connected
+  PASS  demo banner hidden once connected
+
+[tune view reads the real STATE line]
+  PASS  sliders show the device's gains: [5, 6, 10, 16, 24, 29]
+  PASS  compression dropdown set from cr=
+
+[moving a slider reaches the firmware]
+  PASS  band 3 gain is now 20.0 dB in the firmware
+  PASS  volume 12 from the slider is held at +6 dB over Bluetooth (vol=6.0)
+  PASS  bypass checkbox reaches the firmware
+  PASS  compression dropdown sets cr all 3
+  PASS  noise-reduction off sets er=1
+
+[live view]
+  PASS  DSP load shown from LV line: '23.5% OK'
+  PASS  battery shown from BATT line: '76.5% · 3.91 V'
+  PASS  howl guard field populated
+
+[console tab]
+  PASS  console shows stat output reassembled from 20-byte chunks
+  PASS  unknown command is reported
+
+[full hearing test against the firmware]
+  PASS  test finished after 45 presentations
+  PASS  no tone above -20 dBFS was ever requested (max -45)
+  PASS  tone is off at the end of the test
+  PASS  mic stays muted through the whole test (silent tone between beeps, 'tone off' only at the end)
+  PASS  every audible beep is followed by the silent hold, never by the mic (0 not)
+  PASS  beeps left unanswered were ended by the app's timer with the silent hold (9 seen)
+  PASS  fitting table has 6 rows
+  PASS  audiogram tagged 'Your result (uncalibrated)'
+
+[apply fitting]
+  PASS  firmware gains after Apply: [0.0, 0.0, 1.2, 5.0, 10.0, 13.8]
+  PASS  firmware acknowledged 'save'
+
+[protocol health over the whole session]
+  PASS  the app never sent a command the firmware rejected (122 commands) []
+  commands used: batt, bogus, bypass, cr, exp, fit, g, levels, save, stat, state, tone, vol
+  PASS  no JavaScript errors or warnings []
+
+ALL APP TESTS PASSED: 0 failure(s)
+
+==== ALL TEST SUITES PASSED ====
