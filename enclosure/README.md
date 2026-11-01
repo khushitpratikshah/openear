@@ -1,4 +1,44 @@
-# OpenEar enclosure
+# OpenEar enclosures
+
+## OpenEar pod (pocket clip, display case) - `openear_pod.py`
+
+A two-part pod for the MAX32655FTHR with a raised **OpenEar** wordmark and a
+pocket clip. No battery bay: it is made for showing the board, and the LiPo
+lead exits through a slot next to the battery connector.
+
+| | |
+|---|---|
+| Size | 74.6 x 28.9 x 18.7 mm (incl. 0.8 mm wordmark) |
+| Board geometry | from a calibrated photo scan of the real board (holes, buttons, mic, jacks, USB; about +-0.2 mm). Part heights are estimates. |
+| Openings | headphone + line-in jacks (jack end), micro-USB (other end), 6 buttons, hex mic grille over the MEMS mic, battery lead slot |
+| Fixing | the board sits on 4 standoffs with locating pins through its mounting holes; the lid's rabbet fits over a lip on the base (friction fit) |
+| Clip | pen-style, 38 mm arm, 1.8 mm gap; printed separately and fixed with two dowels (4.5 mm pieces of 1.75 mm filament) plus a drop of superglue. Jack end up in the pocket, so the earphone cable runs straight up |
+
+Print (PLA or PETG, 0.2 mm layers, 3 walls). **No supports needed for any part.**
+`python3 check_overhangs.py` checks this: it finds every down-facing surface
+steeper than 45 degrees that is not on the bed, in each part's print
+orientation, and reports 0 mm2 for all three. What is left are short bridges with both ends
+anchored (the lid ceiling, 25 mm; the USB, battery-slot and jack-hole tops).
+How: a 45 degree chamfer on the bottom edge (not a fillet), flat-topped teardrop
+jack holes, chamfered USB corners, a steep 40 degree roof on the lid's rabbet,
+and a clip with chamfered corners and teardrop dowel holes.
+
+
+| File | Orientation |
+|---|---|
+| `stl/openear_pod_base.stl` | as exported, open side up |
+| `stl/openear_pod_lid.stl` | as exported, rim on the bed (the 25 mm ceiling bridges). For a white wordmark, pause and swap filament at the first layer above the lid top (z = 6.2 mm in the lid file) |
+| `stl/openear_pod_clip.stl` | as exported, lying on its side (layers run along the arm, so it springs instead of snapping) |
+
+Regenerate: `pip install manifold3d trimesh numpy matplotlib pillow`, then
+`python3 openear_pod.py` (STLs) and `python3 render_pod.py` (the renders in `stl/`).
+If the board is a loose fit or the pins miss the holes, change `PCB_L`, `PCB_W`,
+`HOLES` or `FIT` at the top of the script; snipping the pins off also works.
+
+---
+
+## Original body-worn case with battery bay - `openear_case.py`
+
 
 A body-worn case for the MAX32655FTHR plus a small LiPo. It measures about
 70 × 27 × 24 mm and has a loop underneath for a badge clip or lanyard.
